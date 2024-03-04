@@ -1,7 +1,0 @@
-{
-    "files.associations": {
-        "thread.h": "c",
-        "interrupt.h": "c",
-        "intrinsic.h": "c"
-    }
-}
