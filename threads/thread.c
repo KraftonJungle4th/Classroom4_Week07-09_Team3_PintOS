@@ -373,23 +373,44 @@ void wake_up(int64_t now_ticks)
 	enum intr_level old_level;
 	struct thread *wake_up_thread;
 
-	if (!list_empty(&sleep_list))
+	while (!list_empty(&sleep_list))
 	{
-		// sleep_list sort
+		old_level = intr_disable();
+
+		// sleep_list sort by time
 		list_sort(&sleep_list, list_less, NULL);
-		list_sort(&sleep_list, list_priority, NULL);
-		for (size_t i = 0; i < list_size(&sleep_list); i++)
+
+		wake_up_thread = list_entry(list_front(&sleep_list), struct thread, elem);
+
+		if (wake_up_thread->wakeup_ticks > now_ticks)
 		{
-			wake_up_thread = list_entry(list_front(&sleep_list), struct thread, elem);
-			if (wake_up_thread->wakeup_ticks <= now_ticks)
-			{
-				old_level = intr_disable();
-				wake_up_thread = list_entry(list_pop_front(&sleep_list), struct thread, elem);
-				thread_unblock(wake_up_thread);
-				intr_set_level(old_level);
-			}
+			break;
 		}
+		else
+		{
+			wake_up_thread = list_entry(list_pop_front(&sleep_list), struct thread, elem);
+			thread_unblock(wake_up_thread);
+		}
+
+		intr_set_level(old_level);
 	}
+	// if (!list_empty(&sleep_list))
+	// {
+	// 	// sleep_list sort
+	// 	list_sort(&sleep_list, list_less, NULL);
+	// 	list_sort(&sleep_list, list_priority, NULL);
+	// 	for (size_t i = 0; i < list_size(&sleep_list); i++)
+	// 	{
+	// 		wake_up_thread = list_entry(list_front(&sleep_list), struct thread, elem);
+	// 		if (wake_up_thread->wakeup_ticks <= now_ticks)
+	// 		{
+	// 			old_level = intr_disable();
+	// 			wake_up_thread = list_entry(list_pop_front(&sleep_list), struct thread, elem);
+	// 			thread_unblock(wake_up_thread);
+	// 			intr_set_level(old_level);
+	// 		}
+	// 	}
+	// }
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */

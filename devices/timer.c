@@ -151,14 +151,13 @@ timer_interrupt(struct intr_frame *args UNUSED)
 	 * move them to the ready list if necessary.
 	 * update the global tick.
 	 */
-	int64_t now = timer_ticks();
-	// enum intr_level old_level;
-	// old_level = intr_disable();
-	wake_up(now);
-	// intr_set_level(old_level);
+	
 	ticks++;
+	wake_up(ticks);
+
 	thread_tick();
 }
+
 
 /* Returns true if LOOPS iterations waits for more than one timer
    tick, otherwise false. */
