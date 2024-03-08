@@ -68,8 +68,8 @@ void sema_down(struct semaphore *sema)
 
 	while (sema->value == 0)
 	{
-		list_sort(&(sema->waiters), list_priority, NULL);
-		list_insert_ordered(&(sema->waiters), &(thread_current()->elem), list_priority, NULL);
+		list_sort(&sema->waiters, list_priority, NULL);
+		list_insert_ordered(&sema->waiters, &thread_current()->elem, list_priority, NULL);
 		thread_block();
 	}
 
@@ -198,50 +198,78 @@ void lock_acquire(struct lock *lock)
 	ASSERT(!intr_context());
 	ASSERT(!lock_held_by_current_thread(lock));
 
-	// sema_down(&lock->semaphore);
-	// lock->holder = thread_current();
+	/*====원본 코드====
+		// sema_down(&lock->semaphore);
+		// lock->holder = thread_current();
+		// 이하 아예 없었음
+	*/
+	enum intr_level old_level;
 
-	struct thread *curr = thread_current();
+	struct thread *curr_thread = thread_current();
+
 	// current thread -> lock가질 수 있다면
-	// = (본인이 이미 가진 lock이 아니고, semaphore가 남아있다면)
+	// = (본인이 이미 가진 lock이 아니고, lock의 holder가 없다면)
 	// lock 획득
-	if (&lock->semaphore.value != 0)
+	if (lock->holder == NULL)
 	{
+		// 내가 기다리는 lock 없애주기
+		curr_thread->wait_on_lock = NULL;
 
+		// 내가 lock의 주인이 되기
+		lock->holder = curr_thread;
+
+		// 나에게 donations 없는 경우 list 초기화
+		if (curr_thread->donations == NULL)
+		{
+			list_init(&lock->holder->donations);
+		}
+
+		// semaphore 하나 내려주기
 		sema_down(&lock->semaphore);
-		lock->holder = thread_current();
-		// lock_try_acquire 함수가 true를 뱉었다면,
-		// 이미 그 함수에서 sema_down과 holder->curr 진행된 것.
-		// return;
 	}
-	// else // curr thread가 lock 획득 불가 상태라면
-	// {	 // sema가 남지 않았다는 말. 그럼 <기다려야> 함.
+	else
+	{
+		/*
+			현재 lock->holder가 존재할 때, 기다리기
+		 */
 
-	// 	// 1. 내가 wait하고 있는 lock을 기억해두기.
-	// 	curr->wait_on_lock = lock;
+		// 시간 멈춰!
+		old_level = intr_disable();
 
-	// 	// 2. 우선순위 역전 방지를 위해, lock_holder의 priority 업데이트
-	// 	// 1) lock의 wait list로 curr thread가 들어가기
-	// 	struct list *wait_list = &(lock->semaphore.waiters);
-	// 	list_sort(wait_list, list_priority, NULL);
-	// 	list_insert_ordered(wait_list, &curr->elem, list_priority, NULL);
+		// 이 lock을 내가 기다리는 것으로 기록
+		curr_thread->wait_on_lock = lock;
 
-	// 	// 2) 현재 lock-holder의 우선순위가 나보다 낮으면,
-	// 	//    lock을 가진 thread에게 본인의 우선순위 기부한 뒤
-	// 	//    우선순위 대로 실행되도록 current 본인은 ready로 들어가기
-	// 	if ((curr->priority) > (lock->holder->priority))
-	// 	{
-	// 		struct thread *lock_holder = lock->holder;
+		// lock_holder의 donations에 들어가기
+		struct list *donations = lock->holder->donations;
 
-	// 		// curr priority <-> lock_holder priority
-	// 		lock_holder->own_priority = lock_holder->priority;
-	// 		lock_holder->priority = curr->priority;
+		// donations 있으면 priority 순으로 정렬해주고
+		if (list_size(donations))
+		{
+			printf("=======[LOCK ACQ] inside donation > 0========\n");
+			list_sort(donations, list_priority, NULL);
+			printf("=======[LOCK ACQ] after sort donation========\n");
+		}
 
-	// 		// curr thread -> ready list
-	// 		// let the thread with highest priority run
-	// 		thread_yield();
-	// 	}
-	// }
+		// priority 순으로 나자신 들어가
+		list_insert_ordered(donations, &curr_thread->d_elem, list_priority, NULL);
+		printf("=======[LOCK ACQ] after insert curr into donations========\n");
+
+		// lock_holder의 priority를 최상으로 올려줘
+		struct thread *highest_prio_thread = list_entry(list_front(donations), struct thread, d_elem);
+		if ((lock->holder->priority) < (highest_prio_thread->priority))
+		{
+			lock->holder->priority = highest_prio_thread->priority;
+
+			// ready_list update 해서 lock_holder의 바뀐 우선순위가 ready_list에 반영되게... 어떻게 해주지..?
+			// list_sort(&ready_list, list_priority, NULL);
+		}
+
+		// 나 자신은 lock 풀릴 때까지 기다려
+		thread_block();
+
+		// 시간 되살려!
+		intr_set_level(old_level);
+	}
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -275,12 +303,89 @@ void lock_release(struct lock *lock)
 	ASSERT(lock != NULL);
 	ASSERT(lock_held_by_current_thread(lock));
 
-	int own_priority = lock->holder->own_priority;
+	// 시간 멈춰!
+	enum intr_level old_level;
+	old_level = intr_disable();
 
+	struct thread *curr_thread = thread_current();
+	struct list *donations = curr_thread->donations;
+
+	// 나에게 donations 없는 경우
+	if (list_empty(donations))
+	{
+		// 나의 원래 우선순위로 되돌아가기
+		curr_thread->priority = curr_thread->own_priority;
+	}
+	else
+	{
+		// 나에게 donations 있는 경우
+
+		// 다음 holder에게 물려줄 donations
+		struct list *inherit_donations;
+		list_init(inherit_donations);
+		struct thread *dona_thread;
+
+		// donations의 d_elem이 NULL이 아닐 때까지 탐색
+		for (struct list_elem *dona_elem = list_front(donations); dona_elem != NULL;)
+		{
+
+			// 만약 d_elem의 wait_on_lock이 현재의 lock과 일치한다면
+			dona_thread = list_entry(dona_elem, struct thread, d_elem);
+
+			dona_elem = list_next(&dona_elem);
+			if (dona_thread->wait_on_lock == lock)
+			{
+				list_insert_ordered(inherit_donations, dona_elem, list_priority, NULL);
+				list_remove(dona_elem);
+			}
+		}
+
+		// 다음 lock holder에게 물려줄 donations가 없다면
+		if (list_empty(inherit_donations))
+		{
+			if (list_empty(donations))
+			{
+				// donations에 있던 모든 thread들이 해당 Lock에 딸린 것이었다면
+				// curr_thread는 더이상 lock과 관련 없음
+				// 본연으로 돌아가기
+				curr_thread->priority = curr_thread->own_priority;
+			}
+			else
+			{
+				// 해당 lock이 아닌 다른 lock에 대한 donations가 있는 경우
+				// 나머지 donations애들중 highest priority에 맞춰주기
+				list_sort(donations, list_priority, NULL);
+				struct thread *highest_prio_thread = list_entry(list_front(donations), struct thread, d_elem);
+				curr_thread->priority = highest_prio_thread->priority;
+			}
+		}
+		// 다음 lock holder에게 물려줄 donations가 하나밖에 없다면
+		else if (list_size(inherit_donations) == 1)
+		{
+			// 하나 남은 그 thread가 바로 next holder
+			struct thread *next_holder = list_entry(list_pop_front(inherit_donations), struct thread, d_elem);
+
+			// next lock holder를 Ready list로 깨워서 올려주기
+			thread_unblock(next_holder);
+		}
+		// 다음 lock holder에게 물려줄 donations가 하나 이상 있다면
+		else if (list_size(inherit_donations > 1))
+		{
+			list_sort(inherit_donations, list_priority, NULL);
+			struct thread *next_holder = list_entry(list_pop_front(inherit_donations), struct thread, d_elem);
+			next_holder->donations = inherit_donations;
+			thread_unblock(next_holder);
+		}
+	}
+
+	// 맨 마지막
 	lock->holder = NULL;
-	sema_up(&lock->semaphore);
 
-	thread_set_priority(own_priority);
+	// 시간 되살려!
+	intr_set_level(old_level);
+
+	// sema 하나 올려두고 퇴장
+	sema_up(&lock->semaphore);
 }
 
 /* Returns true if the current thread holds LOCK, false

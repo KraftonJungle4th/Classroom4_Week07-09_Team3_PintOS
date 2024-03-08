@@ -228,18 +228,27 @@ tid_t thread_create(const char *name, int priority,
 	/* Add new_thread to ready_list */
 	thread_unblock(new_thread);
 
-	curr_thread = thread_current();
-
-	// 새로만드는 thread의 우선순위가 현재 running 중인 thread의 우선순위보다 높으면
-	if ((new_thread->priority) > (curr_thread->priority))
+	// create되는 thread의 우선순위와 running 중인 curr_thread의 우선순위 비교
+	if ((new_thread->priority) > (thread_get_priority()))
 	{
-		// insert curr_thread to ready_list
-		if (aux && lock_held_by_current_thread(aux))
+		if (aux) // aux값과 함께 들어온 경우
 		{
-			thread_set_priority(new_thread->priority);
+			// aux가 lock이고,
+
+			// lock관련이면 그냥 다 넘어가려면 어떻게 해야하지...?
+			if (lock_held_by_current_thread(aux))
+			{
+				return;
+			}
+			else if (!lock_held_by_current_thread(aux))
+			{
+				return;
+			}
 		}
 		else
 		{
+			// create되는 thread의 우선순위가 더 높으면
+			// curr_thread가 실행 순서 양보하기
 			thread_yield();
 		}
 	}
@@ -533,7 +542,6 @@ init_thread(struct thread *t, const char *name, int priority)
 	t->own_priority = priority;
 	t->magic = THREAD_MAGIC;
 	list_init(&(t->donations));
-	// t->d_elem = NULL;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
