@@ -97,6 +97,12 @@ struct thread
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem; /* List element. */
 
+	/* Members used for priority donation */
+	int own_priority;		   // priority before donated
+	struct lock *wait_on_lock; // 획득하기위해 기다리고 있는 lock
+	struct list *donations;	   // 나에게 priority를 기부해줄 thread 리스트
+	struct list_elem d_elem;   // 내가 donations에 속하는 경우 나의 포인터
+
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4; /* Page map level 4 */
@@ -146,6 +152,6 @@ int thread_get_recent_cpu(void);
 int thread_get_load_avg(void);
 
 void do_iret(struct intr_frame *tf);
-list_less_func *list_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
+bool list_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 
 #endif /* threads/thread.h */
