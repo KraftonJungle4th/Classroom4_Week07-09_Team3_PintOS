@@ -231,26 +231,9 @@ tid_t thread_create(const char *name, int priority,
 	// create되는 thread의 우선순위와 running 중인 curr_thread의 우선순위 비교
 	if ((new_thread->priority) > (thread_get_priority()))
 	{
-		if (aux) // aux값과 함께 들어온 경우
-		{
-			// aux가 lock이고,
-
-			// lock관련이면 그냥 다 넘어가려면 어떻게 해야하지...?
-			if (lock_held_by_current_thread(aux))
-			{
-				return;
-			}
-			else if (!lock_held_by_current_thread(aux))
-			{
-				return;
-			}
-		}
-		else
-		{
-			// create되는 thread의 우선순위가 더 높으면
-			// curr_thread가 실행 순서 양보하기
-			thread_yield();
-		}
+		// create되는 thread의 우선순위가 더 높으면
+		// curr_thread가 실행 순서 양보하기
+		thread_yield();
 	}
 
 	return tid;
@@ -424,19 +407,32 @@ void wake_up(int64_t now_ticks)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority)
 {
-	// 우선순위 기부에 맞춰 우선순위 세팅하기
+	// 1. 본인의 우선순위를 아예 새로 세팅하기
 	struct thread *curr_thread, *ready_thread;
 	curr_thread = thread_current();
 
-	curr_thread->priority = new_priority;
+	curr_thread->own_priority = new_priority;
 
+	// 2. 실행에 사용될 priority 세팅
+
+	// 2-1. lock을 가진 thread로 donation에 의해 priority 받을 애들은
+	// 		기존에 설정된 priority 건들지 않고 넘어감
+
+	// 기부받을 priority가 없는 경우, 실행 priority 바꿔주기
+	if (list_empty(&curr_thread->donations))
+	{
+		curr_thread->priority = new_priority;
+	}
+
+	// 2-2. 만약 바꿔준 실행 priority가 ready_list의 첫 thread보다 낮다면
+	// 		나의 순서 양보하기!
 	if (!list_empty(&ready_list))
 	{
 		ready_thread = list_entry(list_front(&ready_list), struct thread, elem);
 
-		if (ready_thread->priority > curr_thread->priority)
+		if (ready_thread->priority > new_priority)
 		{
-			// Insert curr_thread to ready_list
+			// Insert curr_thread into the last of ready_list
 			thread_yield();
 		}
 	}
@@ -541,7 +537,7 @@ init_thread(struct thread *t, const char *name, int priority)
 	t->priority = priority;
 	t->own_priority = priority;
 	t->magic = THREAD_MAGIC;
-	list_init(&(t->donations));
+	list_init(&t->donations);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
