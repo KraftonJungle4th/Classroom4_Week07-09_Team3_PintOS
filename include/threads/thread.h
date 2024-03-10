@@ -99,8 +99,8 @@ struct thread
 
 	/* Members used for priority donation */
 	int own_priority;		   // priority before donated
+	struct list donations;	   // 나에게 priority를 기부해줄 thread 리스트
 	struct lock *wait_on_lock; // 획득하기위해 기다리고 있는 lock
-	struct list *donations;	   // 나에게 priority를 기부해줄 thread 리스트
 	struct list_elem d_elem;   // 내가 donations에 속하는 경우 나의 포인터
 
 #ifdef USERPROG
