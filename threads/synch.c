@@ -204,7 +204,7 @@ void lock_acquire(struct lock *lock)
 	/* lock_holder가 존재해서 당장 Lock을 획득할 수 없다면
 
 		해당 lock_holder,
-		혹시 그가 기다리는 다른 lock의 holder가 연쇄적으로 있다면 끝까지
+		그리고 혹시 그가 기다리는 다른 lock의 holder가 연쇄적으로 있다면 끝까지
 
 		우선순위를 조정하여 업데이트 시켜주기
 	*/
@@ -286,11 +286,11 @@ void lock_release(struct lock *lock)
 
 	struct thread *curr_thread = thread_current(); // == lock_holder
 	struct list *donations = &curr_thread->donations;
-	struct thread *dona_thread;
 
 	// 나에게 donations 있는 경우, 현재 lock을 기다리는 d_elem을 삭제하기
 	if (!list_empty(donations))
 	{
+		struct thread *dona_thread;
 		struct list_elem *curr_elem = list_begin(donations);
 
 		// donations의 끝까지 탐색
