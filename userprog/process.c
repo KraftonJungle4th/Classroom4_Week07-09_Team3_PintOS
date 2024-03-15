@@ -346,6 +346,7 @@ load(const char *arguments, struct intr_frame *if_)
 	char *argv[8];
 	int argc = 0;
 	char *token, *save_ptr;
+	uintptr_t args_arr[argc];
 
 	// <Passing Args>
 	// 1. Break the command into words
@@ -355,12 +356,6 @@ load(const char *arguments, struct intr_frame *if_)
 	{
 		argv[argc] = token;
 		argc++;
-	}
-
-	while (argc >= 0)
-	{
-		printf("======[PASSING] %d, token: %s ======\n", argc, argv[argc]);
-		argc--;
 	}
 	// <Passing Args> to be continued at the bottom of this func
 
@@ -461,7 +456,45 @@ load(const char *arguments, struct intr_frame *if_)
 	 *    Set %rdi to the address of argc
 	 */
 
-	//  * 2. Place the words at the top of the Stack
+	uintptr_t *stack_ptr = (uintptr_t *)if_->rsp;
+
+	// Push arguments in reverse order
+	for (int i = argc - 1; i >= 0; i--)
+	{
+		int len = strlen(argv[i]) + 1;
+		stack_ptr = (uintptr_t *)((char *)stack_ptr - len);
+		memcpy(stack_ptr, argv[i], len);
+
+		args_arr[i] = (uintptr_t)stack_ptr;
+	}
+
+	// Word-align the stack pointer
+	stack_ptr = (uintptr_t *)((uintptr_t)stack_ptr & ~(7));
+
+	// Push argv pointers and a NULL sentinel in reverse order
+	stack_ptr--;
+	*stack_ptr = 0; // NULL sentinel
+
+	for (int i = argc - 1; i >= 0; i--)
+	{
+		stack_ptr--;
+		*stack_ptr = args_arr[i];
+	}
+
+	// Push a fake return address
+	stack_ptr--;
+	*stack_ptr = 0;
+
+	// Set up the initial register values
+	if_->R.rsi = (uintptr_t)(stack_ptr + 1); // argv
+	if_->R.rdi = argc;						 // argc
+
+	// Update the stack pointer in the interrupt frame
+	if_->rsp = (uintptr_t)stack_ptr;
+
+	// hex_dump call to check the stack
+	hex_dump(if_->rsp, (void *)if_->rsp, USER_STACK - if_->rsp, true);
+	palloc_free_page(input_str);
 
 	success = true;
 
