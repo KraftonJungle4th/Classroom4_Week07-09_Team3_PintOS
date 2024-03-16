@@ -348,6 +348,14 @@ void thread_yield(void)
 	intr_set_level(old_level);
 }
 
+void thread_try_yield(void)
+{
+	if (list_empty(&ready_list))
+		return;
+	if (!intr_context() && !list_empty(&ready_list) && thread_current() != idle_thread)
+		thread_yield();
+}
+
 void thread_sleep(int64_t ticks)
 {
 	/**
