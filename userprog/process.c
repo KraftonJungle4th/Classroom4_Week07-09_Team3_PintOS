@@ -172,7 +172,7 @@ int process_exec(void *inputs)
 	bool success;
 
 	/* Parse Arguments */
-	char *argv[8];
+	char *argv[64];
 	int argc = 0;
 	char *token, *save_ptr;
 
@@ -246,7 +246,7 @@ int process_exec(void *inputs)
 	_if.rsp = (uintptr_t)stack_ptr;
 
 	// TEST
-	hex_dump(_if.rsp, (void *)_if.rsp, USER_STACK - _if.rsp, true);
+	// hex_dump(_if.rsp, (void *)_if.rsp, USER_STACK - _if.rsp, true);
 
 	/* If load failed, quit. */
 	palloc_free_page(arguments);
@@ -273,7 +273,7 @@ int process_wait(tid_t child_tid UNUSED)
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
 
-	for (int i = 0; i < 2147483646; i++)
+	for (unsigned long long i = 0; i < 2000000000; i++)
 	{
 	}
 	return -1;
@@ -329,6 +329,52 @@ void process_activate(struct thread *next)
 
 	/* Set thread's kernel stack for use in processing interrupts. */
 	tss_update(next);
+}
+
+int process_add_file(struct file *file)
+{
+	struct thread *curr = thread_current();
+	struct file **fdt = curr->fdt;
+	int fd = curr->fd_idx;
+
+	while (curr->fdt[fd] != NULL && fd < FDT_COUNT_LIMIT)
+	{
+		fd++;
+	}
+
+	if (fd >= FDT_COUNT_LIMIT)
+	{
+		return -1;
+	}
+
+	curr->fd_idx = fd;
+	fdt[fd] = file;
+
+	return fd;
+}
+
+struct file *process_get_file(int fd)
+{
+	if (fd < 2 || fd >= FDT_COUNT_LIMIT)
+	{
+		return NULL;
+	}
+
+	struct thread *curr = thread_current();
+	struct file **fdt = curr->fdt;
+
+	return fdt[fd];
+}
+
+void process_close_file(int fd)
+{
+	struct thread *curr = thread_current();
+	struct file **fdt = curr->fdt;
+
+	if (fd < 2 || fd >= FDT_COUNT_LIMIT)
+		return NULL;
+
+	fdt[fd] = NULL;
 }
 
 /* We load ELF binaries.  The following definitions are taken

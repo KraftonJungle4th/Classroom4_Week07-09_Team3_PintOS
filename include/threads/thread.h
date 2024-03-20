@@ -28,6 +28,9 @@ typedef int tid_t;
 #define PRI_DEFAULT 31 /* Default priority. */
 #define PRI_MAX 63	   /* Highest priority. */
 
+#define FDT_PAGES 2
+#define FDT_COUNT_LIMIT 128
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -102,6 +105,9 @@ struct thread
 	struct list donations;	   // 나에게 priority를 기부해줄 thread 리스트
 	struct lock *wait_on_lock; // 획득하기위해 기다리고 있는 lock
 	struct list_elem d_elem;   // 내가 donations에 속하는 경우 나의 포인터
+
+	struct file **fdt;
+	int fd_idx;
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
