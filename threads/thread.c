@@ -60,8 +60,6 @@ static unsigned thread_ticks; /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
 
-// bool threading_started = false;
-
 static void kernel_thread(thread_func *, void *aux);
 
 static void idle(void *aux UNUSED);
@@ -154,8 +152,6 @@ void thread_start(void)
 
 	/* Wait for the idle thread to initialize idle_thread. */
 	sema_down(&idle_started);
-
-	// threading_started = true;
 }
 
 /* Called by the timer interrupt handler at each timer tick.
@@ -228,6 +224,10 @@ tid_t thread_create(const char *name, int priority,
 	new_thread->tf.ss = SEL_KDSEG;
 	new_thread->tf.cs = SEL_KCSEG;
 	new_thread->tf.eflags = FLAG_IF;
+
+	new_thread->fdt = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
+	if (new_thread->fdt == NULL)
+		return TID_ERROR;
 
 	/* Add new_thread to ready_list */
 	thread_unblock(new_thread);
@@ -549,6 +549,7 @@ init_thread(struct thread *t, const char *name, int priority)
 	t->priority = priority;
 	t->own_priority = priority;
 	t->magic = THREAD_MAGIC;
+	t->fd_idx = 2;
 	list_init(&t->donations);
 }
 

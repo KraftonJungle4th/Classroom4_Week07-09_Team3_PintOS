@@ -1,0 +1,76 @@
+make build/tests/userprog/args-none.result
+make build/tests/userprog/args-single.result
+make build/tests/userprog/args-multiple.result
+make build/tests/userprog/args-many.result
+make build/tests/userprog/args-dbl-space.result
+make build/tests/userprog/halt.result
+# make build/tests/userprog/exit.result
+# make build/tests/userprog/create-normal.result
+# make build/tests/userprog/create-empty.result
+# make build/tests/userprog/create-null.result
+# make build/tests/userprog/create-bad-ptr.result
+# make build/tests/userprog/create-long.result
+# make build/tests/userprog/create-exists.result
+# make build/tests/userprog/create-bound.result
+# make build/tests/userprog/open-normal.result
+# make build/tests/userprog/open-missing.result
+# make build/tests/userprog/open-boundary.result
+# make build/tests/userprog/open-empty.result
+# make build/tests/userprog/open-null.result
+# make build/tests/userprog/open-bad-ptr.result
+# make build/tests/userprog/open-twice.result
+# make build/tests/userprog/close-normal.result
+# make build/tests/userprog/close-twice.result
+# make build/tests/userprog/close-bad-fd.result
+# make build/tests/userprog/read-normal.result
+# make build/tests/userprog/read-bad-ptr.result
+# make build/tests/userprog/read-boundary.result
+# make build/tests/userprog/read-zero.result
+# make build/tests/userprog/read-stdout.result
+# make build/tests/userprog/read-bad-fd.result
+# make build/tests/userprog/write-normal.result
+# make build/tests/userprog/write-bad-ptr.result
+# make build/tests/userprog/write-boundary.result
+# make build/tests/userprog/write-zero.result
+# make build/tests/userprog/write-stdin.result
+# make build/tests/userprog/write-bad-fd.result
+# make build/tests/userprog/fork-once.result
+# make build/tests/userprog/fork-multiple.result
+# make build/tests/userprog/fork-recursive.result
+# make build/tests/userprog/fork-read.result
+# make build/tests/userprog/fork-close.result
+# make build/tests/userprog/fork-boundary.result
+# make build/tests/userprog/exec-once.result
+# make build/tests/userprog/exec-arg.result
+# make build/tests/userprog/exec-boundary.result
+# make build/tests/userprog/exec-missing.result
+# make build/tests/userprog/exec-bad-ptr.result
+# make build/tests/userprog/exec-read.result
+# make build/tests/userprog/wait-simple.result
+# make build/tests/userprog/wait-twice.result
+# make build/tests/userprog/wait-killed.result
+# make build/tests/userprog/wait-bad-pid.result
+# make build/tests/userprog/multi-recurse.result
+# make build/tests/userprog/multi-child-fd.result
+# make build/tests/userprog/rox-simple.result
+# make build/tests/userprog/rox-child.result
+# make build/tests/userprog/rox-multichild.result
+# make build/tests/userprog/bad-read.result
+# make build/tests/userprog/bad-write.result
+# make build/tests/userprog/bad-read2.result
+# make build/tests/userprog/bad-write2.result
+# make build/tests/userprog/bad-jump.result
+# make build/tests/userprog/bad-jump2.result
+# make build/tests/filesys/base/lg-create.result
+# make build/tests/filesys/base/lg-full.result
+# make build/tests/filesys/base/lg-seq-block.result
+# make build/tests/filesys/base/lg-seq-random.result
+# make build/tests/filesys/base/sm-create.result
+# make build/tests/filesys/base/sm-full.result
+# make build/tests/filesys/base/sm-random.result
+# make build/tests/filesys/base/sm-seq-block.result
+# make build/tests/filesys/base/sm-seq-random.result
+# make build/tests/filesys/base/syn-read.result
+# make build/tests/filesys/base/syn-remove.result
+# make build/tests/filesys/base/syn-write.result
+# make build/tests/userprog/no-vm/multi-oom.result

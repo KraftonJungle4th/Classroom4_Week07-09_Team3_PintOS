@@ -41,7 +41,7 @@ process_init(void)
  * Notice that THIS SHOULD BE CALLED ONCE. */
 tid_t process_create_initd(const char *file_name)
 {
-	char *fn_copy;
+	char *fn_copy, *save_ptr;
 	tid_t tid;
 
 	/* Make a copy of FILE_NAME.
@@ -50,6 +50,7 @@ tid_t process_create_initd(const char *file_name)
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy(fn_copy, file_name, PGSIZE);
+	strtok_r(file_name, " ", &save_ptr);
 
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create(file_name, PRI_DEFAULT, initd, fn_copy);
@@ -170,6 +171,19 @@ int process_exec(void *inputs)
 	char *arguments = inputs;
 	bool success;
 
+	/* Parse Arguments */
+	char *argv[64];
+	int argc = 0;
+	char *token, *save_ptr;
+
+	for (token = strtok_r(arguments, " ", &save_ptr);
+		 token != NULL;
+		 token = strtok_r(NULL, " ", &save_ptr))
+	{
+		argv[argc] = token;
+		argc++;
+	}
+
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
@@ -182,7 +196,57 @@ int process_exec(void *inputs)
 	process_cleanup();
 
 	/* And then load the binary */
-	success = load(arguments, &_if);
+	success = load(argv[0], &_if);
+
+	uintptr_t *stack_ptr = (uintptr_t *)_if.rsp;
+
+	// 먼저 스택에 넣을 전체 문자열 길이 계산
+	size_t total_len = 0;
+	for (int i = 0; i < argc; i++)
+	{
+		total_len += strlen(argv[i]) + 1;
+	}
+
+	// 스택 포인터를 전체 길이만큼 내림
+	stack_ptr = (uintptr_t *)((char *)stack_ptr - total_len);
+
+	// argv 포인터 배열 초기화
+	uintptr_t args_arr[argc + 1]; // +1 for NULL sentinel
+
+	// 문자열을 스택에 복사하고, 포인터 배열 채우기
+	char *next = (char *)stack_ptr;
+	for (int i = 0; i < argc; i++)
+	{
+		size_t len = strlen(argv[i]) + 1;
+		memcpy(next, argv[i], len);
+		args_arr[i] = (uintptr_t)next;
+		next += len;
+	}
+	args_arr[argc] = 0; // NULL sentinel
+
+	// 스택 포인터를 워드-정렬
+	stack_ptr = (uintptr_t *)((uintptr_t)stack_ptr & ~0x7);
+
+	// argv 포인터와 NULL 센티넬을 스택에 push
+	for (int i = argc; i >= 0; i--)
+	{
+		stack_ptr--;
+		*stack_ptr = args_arr[i];
+	}
+
+	// 초기 레지스터 값 설정
+	_if.R.rsi = (uintptr_t)(stack_ptr); // argv
+	_if.R.rdi = (uintptr_t)argc;		// argc
+
+	// 마지막 가짜 반환 주소 push
+	stack_ptr--;
+	*stack_ptr = 0;
+
+	// 인터럽트 프레임의 스택 포인터 업데이트
+	_if.rsp = (uintptr_t)stack_ptr;
+
+	// TEST
+	// hex_dump(_if.rsp, (void *)_if.rsp, USER_STACK - _if.rsp, true);
 
 	/* If load failed, quit. */
 	palloc_free_page(arguments);
@@ -208,6 +272,10 @@ int process_wait(tid_t child_tid UNUSED)
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+
+	for (unsigned long long i = 0; i < 2000000000; i++)
+	{
+	}
 	return -1;
 }
 
@@ -261,6 +329,52 @@ void process_activate(struct thread *next)
 
 	/* Set thread's kernel stack for use in processing interrupts. */
 	tss_update(next);
+}
+
+int process_add_file(struct file *file)
+{
+	struct thread *curr = thread_current();
+	struct file **fdt = curr->fdt;
+	int fd = curr->fd_idx;
+
+	while (curr->fdt[fd] != NULL && fd < FDT_COUNT_LIMIT)
+	{
+		fd++;
+	}
+
+	if (fd >= FDT_COUNT_LIMIT)
+	{
+		return -1;
+	}
+
+	curr->fd_idx = fd;
+	fdt[fd] = file;
+
+	return fd;
+}
+
+struct file *process_get_file(int fd)
+{
+	if (fd < 2 || fd >= FDT_COUNT_LIMIT)
+	{
+		return NULL;
+	}
+
+	struct thread *curr = thread_current();
+	struct file **fdt = curr->fdt;
+
+	return fdt[fd];
+}
+
+void process_close_file(int fd)
+{
+	struct thread *curr = thread_current();
+	struct file **fdt = curr->fdt;
+
+	if (fd < 2 || fd >= FDT_COUNT_LIMIT)
+		return NULL;
+
+	fdt[fd] = NULL;
 }
 
 /* We load ELF binaries.  The following definitions are taken
@@ -329,7 +443,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
  * and its initial stack pointer into *RSP.
  * Returns true if successful, false otherwise. */
 static bool
-load(const char *arguments, struct intr_frame *if_)
+load(const char *file_name, struct intr_frame *if_)
 {
 	struct thread *t = thread_current();
 	struct ELF ehdr;
@@ -338,27 +452,6 @@ load(const char *arguments, struct intr_frame *if_)
 	bool success = false;
 	int i;
 
-	/* TODO: Your code goes here.
-	 * TODO: Implement argument passing (see project2/argument_passing.html). */
-	char *input_str = palloc_get_page(PAL_ZERO);
-	strlcpy(input_str, arguments, strlen(arguments) + 1);
-
-	char *argv[8];
-	int argc = 0;
-	char *token, *save_ptr;
-	uintptr_t args_arr[argc];
-
-	// <Passing Args>
-	// 1. Break the command into words
-	for (token = strtok_r(input_str, " ", &save_ptr);
-		 token != NULL;
-		 token = strtok_r(NULL, " ", &save_ptr))
-	{
-		argv[argc] = token;
-		argc++;
-	}
-	// <Passing Args> to be continued at the bottom of this func
-
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create();
 	if (t->pml4 == NULL)
@@ -366,10 +459,10 @@ load(const char *arguments, struct intr_frame *if_)
 	process_activate(thread_current());
 
 	/* Open executable file. */
-	file = filesys_open(argv[0]);
+	file = filesys_open(file_name);
 	if (file == NULL)
 	{
-		printf("load: %s: open failed\n", argv[0]);
+		printf("load: %s: open failed\n", file_name);
 		goto done;
 	}
 
@@ -377,7 +470,7 @@ load(const char *arguments, struct intr_frame *if_)
 	if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\2\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 0x3E // amd64
 		|| ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Phdr) || ehdr.e_phnum > 1024)
 	{
-		printf("load: %s: error loading executable\n", argv[0]);
+		printf("load: %s: error loading executable\n", file_name);
 		goto done;
 	}
 
@@ -445,56 +538,6 @@ load(const char *arguments, struct intr_frame *if_)
 
 	/* Start address. */
 	if_->rip = ehdr.e_entry;
-
-	/** <Passing Args>
-	 * 1. Break the command into words
-	 * 2. Place the words at the top of the Stack
-	 * 3. Push the address of each string
-	 *    and push a null pointer as the last member of argv
-	 *    right ->to left order
-	 * 4. Point %rsi to the address of argv[0]
-	 *    Set %rdi to the address of argc
-	 */
-
-	uintptr_t *stack_ptr = (uintptr_t *)if_->rsp;
-
-	// Push arguments in reverse order
-	for (int i = argc - 1; i >= 0; i--)
-	{
-		int len = strlen(argv[i]) + 1;
-		stack_ptr = (uintptr_t *)((char *)stack_ptr - len);
-		memcpy(stack_ptr, argv[i], len);
-
-		args_arr[i] = (uintptr_t)stack_ptr;
-	}
-
-	// Word-align the stack pointer
-	stack_ptr = (uintptr_t *)((uintptr_t)stack_ptr & ~(7));
-
-	// Push argv pointers and a NULL sentinel in reverse order
-	stack_ptr--;
-	*stack_ptr = 0; // NULL sentinel
-
-	for (int i = argc - 1; i >= 0; i--)
-	{
-		stack_ptr--;
-		*stack_ptr = args_arr[i];
-	}
-
-	// Push a fake return address
-	stack_ptr--;
-	*stack_ptr = 0;
-
-	// Set up the initial register values
-	if_->R.rsi = (uintptr_t)(stack_ptr + 1); // argv
-	if_->R.rdi = argc;						 // argc
-
-	// Update the stack pointer in the interrupt frame
-	if_->rsp = (uintptr_t)stack_ptr;
-
-	// hex_dump call to check the stack
-	hex_dump(if_->rsp, (void *)if_->rsp, USER_STACK - if_->rsp, true);
-	palloc_free_page(input_str);
 
 	success = true;
 
